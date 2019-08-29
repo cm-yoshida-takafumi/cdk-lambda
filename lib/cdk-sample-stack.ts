@@ -1,6 +1,7 @@
 import cdk = require('@aws-cdk/core');
 import lambda = require('@aws-cdk/aws-lambda');
 import dynamodb = require('@aws-cdk/aws-dynamodb');
+import apigateway = require('@aws-cdk/aws-apigateway');
 import { Duration } from '@aws-cdk/core';
 import * as ziputil from './zip-util';
 
@@ -15,6 +16,8 @@ export class CdkSampleStack extends cdk.Stack {
         type: dynamodb.AttributeType.STRING
       }
     });
+
+
 
     ziputil.createLayer()
     const layer = new lambda.LayerVersion(this, 'layer', {
@@ -36,5 +39,30 @@ export class CdkSampleStack extends cdk.Stack {
 
     ddb.grantReadWriteData(fn);
 
+
+    const api = new apigateway.RestApi(this, 'RestApi', {})
+    const resource = api.root.addResource("items")
+
+    const integration = new apigateway.LambdaIntegration(fn, {
+      proxy: false,
+      passthroughBehavior: apigateway.PassthroughBehavior.WHEN_NO_MATCH,
+      requestTemplates: {
+        'application/json': '$input.json("$")'
+      },
+      integrationResponses: [
+        {
+          statusCode: "200",
+          responseTemplates: {
+            'application/json': '$input.json("$")'
+          }
+        }
+      ]
+    })
+
+    resource.addMethod('POST', integration, {
+      methodResponses: [
+        { statusCode: "200" }
+      ]
+    })
   }
 }
