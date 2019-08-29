@@ -4,6 +4,7 @@ import dynamodb = require('@aws-cdk/aws-dynamodb');
 import apigateway = require('@aws-cdk/aws-apigateway');
 import { Duration } from '@aws-cdk/core';
 import * as ziputil from './zip-util';
+import { index } from '../src';
 
 export class CdkSampleStack extends cdk.Stack {
   constructor(scope: cdk.Construct, id: string, props?: cdk.StackProps) {
@@ -36,8 +37,20 @@ export class CdkSampleStack extends cdk.Stack {
       },
       layers: [ layer ]
     });
-
     ddb.grantReadWriteData(fn);
+
+    // GET /items
+    const indexFunction = new lambda.Function(this, 'itemsIndex', {
+      code: lambda.Code.fromAsset('src'),
+      runtime: lambda.Runtime.NODEJS_10_X,
+      handler: 'index.index',
+      timeout: Duration.seconds(10),
+      environment: {
+        TABLE_NAME: ddb.tableName
+      },
+      layers: [ layer ]
+    });
+    ddb.grantReadData(indexFunction);
 
 
     const api = new apigateway.RestApi(this, 'RestApi', {})
@@ -59,7 +72,29 @@ export class CdkSampleStack extends cdk.Stack {
       ]
     })
 
+    const indexIntegration = new apigateway.LambdaIntegration(indexFunction, {
+      proxy: false,
+      passthroughBehavior: apigateway.PassthroughBehavior.WHEN_NO_MATCH,
+      requestTemplates: {
+        'application/json': '$input.json("$")'
+      },
+      integrationResponses: [
+        {
+          statusCode: "200",
+          responseTemplates: {
+            'application/json': '$input.json("$")'
+          }
+        }
+      ]
+    })
+
     resource.addMethod('POST', integration, {
+      methodResponses: [
+        { statusCode: "200" }
+      ]
+    })
+
+    resource.addMethod('GET', indexIntegration, {
       methodResponses: [
         { statusCode: "200" }
       ]
