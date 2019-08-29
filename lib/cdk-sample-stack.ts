@@ -4,7 +4,6 @@ import dynamodb = require('@aws-cdk/aws-dynamodb');
 import apigateway = require('@aws-cdk/aws-apigateway');
 import { Duration } from '@aws-cdk/core';
 import * as ziputil from './zip-util';
-import { index } from '../src';
 
 export class CdkSampleStack extends cdk.Stack {
   constructor(scope: cdk.Construct, id: string, props?: cdk.StackProps) {
@@ -26,29 +25,27 @@ export class CdkSampleStack extends cdk.Stack {
       compatibleRuntimes: [lambda.Runtime.NODEJS_10_X]
     })
 
-    const fn = new lambda.Function(this, 'HelloLambda', {
-      functionName: 'HelloLambdaTest',
+    const createFunction = new lambda.Function(this, 'itemsCreate', {
       code: lambda.Code.fromAsset('src'),
       runtime: lambda.Runtime.NODEJS_10_X,
-      handler: 'index.handler',
+      handler: 'create.handler',
       timeout: Duration.seconds(10),
       environment: {
         TABLE_NAME: ddb.tableName
       },
       layers: [ layer ]
     });
-    ddb.grantReadWriteData(fn);
+    ddb.grantReadWriteData(createFunction);
 
     // GET /items
     const indexFunction = new lambda.Function(this, 'itemsIndex', {
       code: lambda.Code.fromAsset('src'),
       runtime: lambda.Runtime.NODEJS_10_X,
-      handler: 'index.index',
+      handler: 'index.handler',
       timeout: Duration.seconds(10),
       environment: {
         TABLE_NAME: ddb.tableName
-      },
-      layers: [ layer ]
+      }
     });
     ddb.grantReadData(indexFunction);
 
@@ -56,7 +53,7 @@ export class CdkSampleStack extends cdk.Stack {
     const api = new apigateway.RestApi(this, 'RestApi', {})
     const resource = api.root.addResource("items")
 
-    const integration = new apigateway.LambdaIntegration(fn, {
+    const createIntegration = new apigateway.LambdaIntegration(createFunction, {
       proxy: false,
       passthroughBehavior: apigateway.PassthroughBehavior.WHEN_NO_MATCH,
       requestTemplates: {
@@ -69,6 +66,12 @@ export class CdkSampleStack extends cdk.Stack {
             'application/json': '$input.json("$")'
           }
         }
+      ]
+    })
+
+    resource.addMethod('POST', createIntegration, {
+      methodResponses: [
+        { statusCode: "200" }
       ]
     })
 
@@ -85,12 +88,6 @@ export class CdkSampleStack extends cdk.Stack {
             'application/json': '$input.json("$")'
           }
         }
-      ]
-    })
-
-    resource.addMethod('POST', integration, {
-      methodResponses: [
-        { statusCode: "200" }
       ]
     })
 
